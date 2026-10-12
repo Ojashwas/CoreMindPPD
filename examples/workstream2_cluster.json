@@ -1,0 +1,6 @@
+{
+  "cluster_id": "ws2-db-connectivity",
+  "summary": "Recurring database connectivity failures and application timeouts",
+  "incident_ids": [],
+  "company": ""
+}

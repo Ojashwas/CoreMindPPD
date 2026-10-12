@@ -1,0 +1,13 @@
+{
+  "name": "coremind-rca-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DOM integration checks for the CoreMind RCA workspace; no frontend build step required",
+  "scripts": {
+    "test:ui": "node --test tests/ui.test.cjs",
+    "test:ui:live": "node tests/live-ui-check.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "^29.0.0"
+  }
+}
