@@ -82,7 +82,7 @@ def build(settings):
     return fit_snapshot(settings, records, profile)
 
 
-def fit_snapshot(settings, records, profile):
+def fit_snapshot(settings, records, profile, effectiveness_coverage=None):
     docs = [row for row in records if row['kind'] in {'incident', 'problem', 'problem_task', 'change', 'case', 'request', 'catalog_task'}
             and symptom_text(row).strip()]
     if not docs:
@@ -111,6 +111,8 @@ def fit_snapshot(settings, records, profile):
                                 'Problem fix is a timestamp, and knowledge is a flag; neither is resolution evidence.',
                                 'Confidence is a heuristic evidence score, not a calibrated causal probability.',
                                 'Mutable Snow snapshots do not establish point-in-time label or field availability.']}
+    if effectiveness_coverage is not None:
+        manifest['effectiveness_coverage'] = effectiveness_coverage
     settings.artifacts.mkdir(parents=True, exist_ok=True)
     bundle = {'records': records, 'docs': docs, 'vectorizer': vec, 'matrix': matrix,
               'cause_vectorizer': cause_vec, 'cause_model': cause_model, 'manifest': manifest}

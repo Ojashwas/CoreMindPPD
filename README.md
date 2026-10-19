@@ -135,3 +135,90 @@ Node.js and jsdom are development-only dependencies for UI checks. The running a
 UI test reference: [jsdom script execution](https://github.com/jsdom/jsdom#executing-scripts).
 
 References: [scikit-learn TF-IDF](https://scikit-learn.org/stable/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html), [Microsoft Foundry retrieval and grounding](https://learn.microsoft.com/en-us/azure/foundry/concepts/retrieval-augmented-generation?view=foundry-classic).
+
+
+## RCA effectiveness and recurrence trends
+
+Open **RCA effectiveness** in the top navigation. This page is separate from
+investigation drafting: it measures observed incident recurrence after problem closure.
+It includes 7-, 14-, 30-, and 90-day comparison windows, company and problem filters,
+an outcome register, a per-problem trend, and source incident drilldown.
+
+The comparison point is the problem's recorded closure date, for a Closed/Resolved
+problem with consistent timestamps. The source does not include verified RCA approval
+or corrective-action completion. Closure is therefore a timing proxy, not confirmation
+that an RCA was correct or that a fix caused improvement.
+
+Incident families use explicit first-reported incident links, plus similar symptom text
+(cosine threshold 0.35) within the same company and CI, or the same company, service,
+and assignment group. If a linked incident exists, it supplies the symptom anchor;
+otherwise the problem description is used. Candidate matches need analyst validation.
+An incident can match more than one problem; the summary recurrence total deduplicates
+incident IDs while per-problem counts retain those relationships.
+
+The score is `clamp(100 * (1 - after_count / before_count), 0, 100)` for equal windows.
+The actual reduction percentage remains visible even when negative. Scoring requires
+at least three baseline incidents, coverage of both windows, and a completed follow-up
+window. Missing history, a small baseline, ongoing monitoring, and problems awaiting
+closure remain unscored. Hatched chart intervals indicate unobserved or incomplete days.
+A score of 100 means no matching recurrence was observed in the selected window;
+it does not establish causal prevention or guarantee future non-recurrence.
+
+For the current bounded latest-N extraction, continuous history starts at the oldest
+incident in the primary extract. Older incidents appended solely through explicit problem
+links do not extend that coverage. Unknown coverage, ambiguous extraction losses,
+or incident creation-date parse failures withhold scores. A latest-row-only snapshot may have no fully scorable problems; the screen exposes
+candidate recurrences and evidence gaps. The Snow SQL backfill below supplies targeted history.
+Load a rebuilt snapshot with enough baseline and follow-up history, then restart the
+service to refresh the analysis. Refreshing the page alone does not fetch new SQL data.
+
+Read-only endpoints: `GET /api/effectiveness?window_days=7&company=...` and
+`GET /api/effectiveness/{problem_id}?window_days=7`. Per-problem evidence is capped at
+100 displayed records, while counts and trends use all matches. Calculations are cached
+only for the loaded snapshot. There are no SQL writes, autonomous remediation, scheduled
+refreshes, or claims of guaranteed prevention.
+
+Run `python -m pytest -q`, `npm run test:ui`, and `npm run test:ui:live` for validation.
+The live check defaults to port 8011; set `RCA_BASE_URL` to override it.
+
+
+The effectiveness page also groups unscored problems by the reason blocking their
+score. Selecting a reason filters the outcome register. Each problem displays a
+five-item evidence checklist (closure, baseline history, follow-up history, elapsed
+follow-up time, and baseline size). An unknown baseline size remains unknown when
+history is missing. This checklist measures data readiness, not RCA effectiveness.
+
+
+### Snow SQL history backfill
+
+Set the Snow SQL connection fields in the ignored `PPDModel/.env` (see `.env.example`).
+Do not paste passwords in chat or commit them. The configured database, schema and cutoff
+must match the model snapshot. The backfill uses only parameterized SELECT queries.
+
+```powershell
+python -m coremind backfill-history --plan
+python -m coremind backfill-history --window-days 90
+# If interrupted, resume the identical source and snapshot:
+python -m coremind backfill-history --window-days 90 --resume
+```
+
+This selects all incident rows matching each eligible closed problem's company and
+resource context in its comparison period. It does not use the latest-N limit.
+Rows stream in batches, and a checkpoint is saved after each query batch. Dates that
+cannot be parsed and missing incident IDs invalidate coverage for that batch rather
+than awarding a score. Problems without usable context cannot be backfilled this way.
+
+A new model is fitted in a staging folder while the running service keeps the prior
+snapshot. Existing model files are backed up under `artifacts/before-history-backfill/`;
+the model bundle is replaced only after fitting succeeds. Restart the RCA service to
+load it. Per-problem coverage is stored in the model and accepted only while the closure
+date and matching contexts still agree. The UI continues to show the main latest-N
+extract interval; targeted history applies only to the problems it fully covers.
+
+Backfilling improves data coverage; it does not make every problem scoreable. A genuine
+small baseline, incomplete follow-up, missing closure, or invalid context still withholds
+the outcome score. Rebuilding for a later cutoff requires source data for that cutoff;
+this command deliberately keeps the loaded model's cutoff unchanged.
+
+The effectiveness screen opens with a 90-day comparison and prioritizes scored outcomes
+when available. Use All problems or the reason filters to inspect unscored cases.

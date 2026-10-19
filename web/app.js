@@ -8,7 +8,7 @@ const number = value => new Intl.NumberFormat('en-GB').format(Number(value) || 0
 const percent = value => value == null ? 'Unavailable' : `${(Number(value) * 100).toFixed(1)}%`;
 const bounded = value => Math.min(1, Math.max(0, Number(value) || 0));
 const human = value => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-const views = {overview:'Overview', investigations:'Investigations', incidents:'Incident explorer', health:'Data & model health', guide:'How to read results'};
+const views = {overview:'Overview', investigations:'Investigations', incidents:'Incident explorer', health:'Data & model health', effectiveness:'RCA effectiveness', guide:'How to read results'};
 const state = {manifest:null, workspace:null, report:null, history:[], currentHistory:null, rows:[],
   selected:new Map(), page:0, pageSize:20, nextPage:false, incidentRequest:0, requestController:null,
   running:false, checked:new Set(), clusterName:''};
@@ -51,21 +51,13 @@ function navigate(view, focus=false) {
     button.classList.toggle('active',active);
     if(active) button.setAttribute('aria-current','page'); else button.removeAttribute('aria-current');
   });
-  $('breadcrumb-current').textContent=views[view];
-  document.title=`${views[view]} | CoreMind`;
+  document.title=`${views[view]} | Problem detection & RCA`;
   if(location.hash!==`#${view}`) history.replaceState(null,'',`#${view}`);
-  closeMenu();
   if (view==='incidents' && !state.rows.length) loadIncidents();
   if (view==='guide') window.CoreMindGuide?.refresh();
+  if (view==='effectiveness') window.RCAEffectiveness?.load();
   if(focus) $('main').focus({preventScroll:true});
 }
-function toggleMenu() {
-  const open=$('sidebar').classList.toggle('open');
-  $('menu-toggle').setAttribute('aria-expanded',String(open));
-  show('sidebar-backdrop',open);
-  if(open) document.querySelector('.nav-item.active').focus();
-}
-function closeMenu() { $('sidebar').classList.remove('open'); $('menu-toggle').setAttribute('aria-expanded','false'); show('sidebar-backdrop',false); }
 function selectOptions(id, values, title) {
   const selected=$(id).value;
   $(id).innerHTML=`<option value="">${esc(title)}</option>`+values.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join('');
@@ -90,7 +82,7 @@ function renderTrend(rows) {
     const label=new Intl.DateTimeFormat('en-GB',{month:'short',day:'2-digit',timeZone:'UTC'}).format(new Date(`${row.date}T00:00:00Z`));
     return `<text x="${x(i)}" y="${height-8}" text-anchor="middle">${esc(label)}</text>`;
   }).join('');
-  $('trend-chart').innerHTML=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="trend-title trend-description"><title id="trend-title">Incident volume in the loaded snapshot</title><desc id="trend-description">${esc(rows.map(row=>`${row.date}: ${row.count} incidents`).join('; '))}</desc><defs><linearGradient id="trend-gradient" x1="0" y1="0" x2="0" y2="1"><stop stop-color="var(--teal)" stop-opacity=".23"/><stop offset="1" stop-color="var(--teal)" stop-opacity=".01"/></linearGradient></defs>${grids}<path d="${area}" fill="url(#trend-gradient)"/><polyline points="${points.join(' ')}" class="chart-line"/>${rows.map((row,i)=>`<circle cx="${x(i)}" cy="${y(row.count)}" r="3" fill="var(--teal)" stroke="var(--surface)" stroke-width="1.5"><title>${esc(row.date)}: ${number(row.count)} incidents</title></circle>`).join('')}${labels}</svg>`;
+  $('trend-chart').innerHTML=`<svg viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="trend-title trend-description"><title id="trend-title">Incident volume in the loaded snapshot</title><desc id="trend-description">${esc(rows.map(row=>`${row.date}: ${row.count} incidents`).join('; '))}</desc><defs><linearGradient id="trend-gradient" x1="0" y1="0" x2="0" y2="1"><stop stop-color="var(--green)" stop-opacity=".23"/><stop offset="1" stop-color="var(--green)" stop-opacity=".01"/></linearGradient></defs>${grids}<path d="${area}" fill="url(#trend-gradient)"/><polyline points="${points.join(' ')}" class="chart-line"/>${rows.map((row,i)=>`<circle cx="${x(i)}" cy="${y(row.count)}" r="3" fill="var(--green)" stroke="var(--surface)" stroke-width="1.5"><title>${esc(row.date)}: ${number(row.count)} incidents</title></circle>`).join('')}${labels}</svg>`;
   $('trend-total').textContent=`${number(values.reduce((a,b)=>a+b,0))} recorded in this period`;
 }
 function renderPriority(distribution) {
@@ -335,14 +327,6 @@ document.querySelector('.report-tabs').addEventListener('keydown',event=>{
 $('investigation-form').addEventListener('submit',runInvestigation);
 $('incident-input').addEventListener('input',()=>{renderChips();state.clusterName='';show('cluster-context',false);});
 $('refresh').addEventListener('click',loadWorkspace);
-$('menu-toggle').addEventListener('click',toggleMenu); $('sidebar-backdrop').addEventListener('click',closeMenu);
-document.addEventListener('keydown',event=>{if(event.key==='Escape' && $('sidebar').classList.contains('open')){closeMenu();$('menu-toggle').focus();}});
-document.addEventListener('keydown',event=>{
-  if(event.key!=='Tab' || !$('sidebar').classList.contains('open'))return;
-  const nodes=[...$('sidebar').querySelectorAll('a,button:not(:disabled)')],first=nodes[0],last=nodes[nodes.length-1];
-  if(event.shiftKey && document.activeElement===first){event.preventDefault();last.focus();}
-  else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first.focus();}
-});
 window.addEventListener('hashchange',()=>navigate(location.hash.slice(1)));
 $('close-evidence').addEventListener('click',()=>$('evidence-dialog').close());
 $('evidence-dialog').addEventListener('click',event=>{if(event.target===$('evidence-dialog')){const r=$('evidence-dialog').getBoundingClientRect();if(event.clientX<r.left || event.clientX>r.right || event.clientY<r.top || event.clientY>r.bottom)$('evidence-dialog').close();}});

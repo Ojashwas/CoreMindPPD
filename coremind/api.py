@@ -2,6 +2,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from threading import Lock
 from zoneinfo import ZoneInfo
+from enum import IntEnum
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from .config import Settings, ROOT
 from .rca import RCAOrchestrator, ids, priority_high
+from .effectiveness import EffectivenessTracker
 
 settings = Settings.load()
 engine = None
@@ -29,6 +31,14 @@ def get_engine():
 
 app = FastAPI(title='CoreMind | Workstream 3 RCA', version='1.0.0')
 app.mount('/static', StaticFiles(directory=ROOT / 'web'), name='static')
+
+
+@app.middleware('http')
+async def refresh_workspace_assets(request, call_next):
+    response = await call_next(request)
+    if request.url.path == '/' or request.url.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 class Investigation(BaseModel):
@@ -114,6 +124,42 @@ def workspace():
             'states': sorted(states), 'priorities': sorted(priorities),
             'linked_examples': examples[:6], 'as_of': manifest['as_of'],
             'scope_note': 'Counts describe the bounded loaded snapshot. SLA coverage is independently bounded.'}
+
+
+def effectiveness_tracker():
+    model = get_engine()
+    with engine_lock:
+        if not hasattr(model, '_effectiveness_tracker'):
+            model._effectiveness_tracker = EffectivenessTracker(model)
+    return model._effectiveness_tracker
+
+
+class ComparisonWindow(IntEnum):
+    week = 7
+    fortnight = 14
+    month = 30
+    quarter = 90
+
+
+@app.get('/api/effectiveness')
+def effectiveness(window_days: ComparisonWindow = ComparisonWindow.week,
+                  company: str = Query(default='', max_length=300)):
+    # Serialize first computation; subsequent calls reuse the immutable snapshot results.
+    tracker = effectiveness_tracker()
+    with engine_lock:
+        return tracker.overview(window_days, company)
+
+
+@app.get('/api/effectiveness/{problem_id}')
+def problem_effectiveness(problem_id: str,
+                          window_days: ComparisonWindow = ComparisonWindow.week):
+    tracker = effectiveness_tracker()
+    with engine_lock:
+        result = tracker.results(window_days).get(problem_id.upper())
+    if result is None:
+        raise HTTPException(404, 'Problem absent from the loaded snapshot')
+    # Bound the evidence response; counts and daily buckets retain all matching records.
+    return dict(result, matches=result['matches'][:100], match_total=len(result['matches']))
 
 
 @app.post('/api/investigate')

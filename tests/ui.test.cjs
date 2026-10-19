@@ -39,7 +39,7 @@ async function setup(t, options={}) {
   const dom=new JSDOM(html,{url:'http://localhost:8000/',runScripts:'outside-only',pretendToBeVisual:true});
   const w=dom.window, requests=[], downloads=[];
   t.after(()=>w.close());
-  const style=w.document.createElement('style');style.textContent=styles;w.document.head.appendChild(style);
+  const style=w.document.createElement('style');style.textContent=styles+fs.readFileSync(path.join(root,'web/effectiveness.css'),'utf8');w.document.head.appendChild(style);
   w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
   w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
   w.URL.createObjectURL=blob=>{downloads.push(blob);return 'blob:test';};w.URL.revokeObjectURL=()=>{};
@@ -60,6 +60,11 @@ async function setup(t, options={}) {
       const offset=Number(p.get('offset')||0),limit=Number(p.get('limit')||40);
       return {ok:true,json:async()=>structuredClone(list.slice(offset,offset+limit))};
     }
+    if(url.startsWith('/api/effectiveness')){
+      if(options.failEffectiveness)return {ok:false,json:async()=>({detail:'Outcome analysis unavailable'})};
+      if(url.startsWith('/api/effectiveness/'))return {ok:true,json:async()=>structuredClone(options.effectDetail||effectDetail)};
+      return {ok:true,json:async()=>structuredClone(options.effectOverview||effectOverview)};
+    }
     if(url==='/api/investigate'){
       if(options.deferInvestigation)return new Promise(resolve=>{options.resolve=resolve;});
       if(options.failInvestigation)return {ok:false,json:async()=>({detail:'Incident absent from snapshot'})};
@@ -68,7 +73,8 @@ async function setup(t, options={}) {
     throw new Error(`Unexpected request: ${url}`);
   };
   vm.runInContext(code,dom.getInternalVMContext());
-  vm.runInContext(guide,dom.getInternalVMContext());await settle();
+  vm.runInContext(guide,dom.getInternalVMContext());
+  vm.runInContext(fs.readFileSync(path.join(root,'web/effectiveness.js'),'utf8'),dom.getInternalVMContext());await settle();
   const $=id=>w.document.getElementById(id);
   const change=(node,value)=>{node.value=value;node.dispatchEvent(new w.Event('change',{bubbles:true}));};
   const submit=async()=>{$('investigation-form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await settle();};
@@ -177,12 +183,16 @@ test('record text is escaped instead of becoming executable markup',async t=>{
   assert.equal($('evidence-detail').querySelectorAll('script').length,0);
 });
 
-test('API outage is visible and mobile navigation supports closing with Escape',async t=>{
+test('API outage stays visible with persistent top navigation',async t=>{
   const {w,$}=await setup(t,{failWorkspace:true});
-  assert.match($('global-error').textContent,/Snapshot unavailable/);assert.equal($('connection-label').textContent,'Snapshot unavailable');
-  $('menu-toggle').click();assert.equal($('menu-toggle').getAttribute('aria-expanded'),'true');
-  w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
-  assert.equal($('menu-toggle').getAttribute('aria-expanded'),'false');
+  assert.match($('global-error').textContent,/Snapshot unavailable/);
+  assert.equal($('connection-label').textContent,'Snapshot unavailable');
+  const nav=w.document.querySelector('.workspace-header .main-nav');
+  assert.equal(nav.querySelectorAll('.nav-item').length,6);
+  assert.equal(w.document.querySelector('.sidebar'),null);
+  nav.querySelector('[data-view="health"]').click();
+  assert.equal($('view-health').classList.contains('hidden'),false);
+  assert.equal(nav.querySelector('[aria-current="page"]').dataset.view,'health');
 });
 
 test('report exports contain the actual report and preserve unconfirmed status',async t=>{
@@ -252,4 +262,65 @@ test('guide does not invent a hypothesis or score for an insufficient result',as
   assert.match($('guide-number-cards').textContent,/No causal hypothesis/);
   assert.ok(!$('guide-number-cards').textContent.includes('0.57'));
   assert.match($('guide-number-cards').textContent,/No classifier lead/);
+});
+
+const effectDetail={id:'PRB1',title:'Database timeout',company:'A',service:'Database',ci:'DB1',owner:'Operations',cause:'Network',state:'Closed',created:'2026-09-01T00:00:00+00:00',closed:'2026-10-01T00:00:00+00:00',window_days:7,status:'reduced',score:67,rate_change_percent:66.7,before_count:3,after_count:1,before_rate:3,after_rate:1,monitored_days:7,baseline_covered:true,post_covered:true,reason:'Observed reduction, not confirmed prevention.',anchor_basis:'Linked incident symptoms',first_recurrence_days:2,high_priority_after:1,daily:Array.from({length:14},(_,i)=>({day:i-7,count:i===9?1:0})),matches:[{id:'INC1',title:'Timeout',created:'2026-10-03T00:00:00+00:00',period:'After closure',relation:'Same CI',similarity:.7}],match_total:1};
+const effectOverview={as_of:fixtureManifest.as_of,coverage_start:'2026-09-01T00:00:00+00:00',window_days:7,companies:['A'],summary:{problems:1,scored:1,average_score:67,recurrence_candidates:1,needs_review:0,monitoring:0,unscored:0},method:{matching:'Same company and same CI with matching symptoms.',formula:'100 ? (1 ? after / before)',limitation:'Closure is a proxy; recurrences require review.'},problems:[effectDetail]};
+
+test('effectiveness screen compares outcomes and drills into matching incidents',async t=>{
+  const {w,$,requests,change}=await setup(t);
+  w.document.querySelector('[data-view="effectiveness"]').click();await settle();
+  assert.equal($('view-effectiveness').classList.contains('hidden'),false);
+  assert.match($('effect-metrics').textContent,/67 \/ 100/);
+  assert.equal(w.document.querySelector('[data-effect-filter="scored"]').getAttribute('aria-pressed'),'true');
+  assert.match($('effect-detail').textContent,/66.7% fewer/);
+  assert.ok($('effect-detail').querySelector('svg[role="img"]'));
+  assert.match($('effect-detail').textContent,/After closure/);
+  $('effect-search').value='no matching problem';$('effect-search').dispatchEvent(new w.Event('input'));
+  assert.match($('effect-table').textContent,/No matching problems/);
+  $('effect-show-method').click();assert.equal($('effectiveness-method').open,true);
+  assert.equal(w.location.hash,'#effectiveness');
+  change($('effect-window'),'30');await settle();
+  assert.ok(requests.some(r=>r.url.includes('/api/effectiveness?window_days=30')));
+  $('effect-detail').querySelector('[data-incident="INC1"]').click();
+  assert.equal($('incident-input').value,'INC1');
+  assert.equal($('view-investigations').classList.contains('hidden'),false);
+});
+
+test('effectiveness withholds missing-history scores and exposes request errors',async t=>{
+  const noScore={...effectDetail,status:'insufficient_history',score:null,rate_change_percent:null,baseline_covered:false,reason:'Incomplete history: no score assigned.'};
+  const overview={...effectOverview,summary:{...effectOverview.summary,scored:0,unscored:1,average_score:null},problems:[noScore]};
+  const {w,$}=await setup(t,{effectOverview:overview,effectDetail:noScore});
+  w.document.querySelector('[data-view="effectiveness"]').click();await settle();
+  assert.match($('effect-metrics').textContent,/Not yet scorable/);
+  assert.match($('effect-detail').textContent,/Not scored/);
+  assert.match($('effect-table').textContent,/Partial history/);
+  assert.equal($('effect-detail').querySelector('.effect-score-ring strong').textContent,'\u2014');
+  const failed=await setup(t,{failEffectiveness:true});
+  failed.w.document.querySelector('[data-view="effectiveness"]').click();await settle();
+  assert.match(failed.$('effect-error').textContent,/Outcome analysis unavailable/);
+  assert.equal(failed.$('effect-refresh').disabled,false);
+});
+
+
+test('unchanged recurrence is never described as improvement',async t=>{
+  const unchanged={...effectDetail,status:'unchanged',score:0,rate_change_percent:0,after_count:3};
+  const {w,$}=await setup(t,{effectDetail:unchanged});
+  w.document.querySelector('[data-view="effectiveness"]').click();await settle();
+  assert.match($('effect-detail').textContent,/No recurrence reduction/);
+  assert.doesNotMatch($('effect-detail').textContent,/Recurrence reduced/);
+});
+
+
+test('missing-score diagnostics filter affected problems and show requirements',async t=>{
+  const noScore={...effectDetail,status:'insufficient_history',score:null,rate_change_percent:null,baseline_covered:false,reason:'Incomplete history.',scoring_requirements:[{label:'Valid problem closure',met:true},{label:'Full 7-day baseline history',met:false},{label:'At least 3 baseline incidents',met:null}]};
+  const overview={...effectOverview,summary:{...effectOverview.summary,scored:0,unscored:1,average_score:null},unscored_reasons:{insufficient_history:1},problems:[noScore]};
+  const {w,$}=await setup(t,{effectOverview:overview,effectDetail:noScore});
+  w.document.querySelector('[data-view="effectiveness"]').click();await settle();
+  assert.match($('effect-reasons').textContent,/Missing comparison history/);
+  assert.match($('effect-readiness-total').textContent,/1 unscored/);
+  $('effect-reasons').querySelector('button').click();
+  assert.equal($('effect-reasons').querySelector('button').getAttribute('aria-pressed'),'true');
+  assert.match($('effect-table').textContent,/PRB1/);
+  assert.match($('effect-detail').querySelector('.effect-requirements').textContent,/Cannot assess yet/);
 });

@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0e1116">
+  <meta name="theme-color" content="#faf8f4">
   <meta name="description" content="CoreMind RCA workspace: investigate incidents, inspect evidence, and understand service impact.">
-  <title>CoreMind | RCA workspace</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <title>Problem detection & RCA</title>
+  <link rel="stylesheet" href="/static/styles.css?v=rca-effectiveness-20261016">
   <link rel="stylesheet" href="/static/reading-guide.css">
-  <script defer src="/static/app.js"></script>
+  <script defer src="/static/app.js?v=rca-effectiveness-20261016"></script>
   <script defer src="/static/reading-guide.js"></script>
+  <script defer src="/static/effectiveness.js?v=effectiveness-20261016"></script>
+  <link rel="stylesheet" href="/static/effectiveness.css?v=effectiveness-20261016">
 </head>
 <body>
 <svg class="icon-definitions" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
@@ -36,22 +38,25 @@
   <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 8V3h12v5M6 17H3V8h18v9h-3M6 14h12v7H6zM17 11h.01"/></symbol>
 </defs></svg>
 <a class="skip-link" href="#main">Skip to content</a>
-<div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
-<aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
-  <a class="brand" href="#overview" aria-label="CoreMind overview"><span class="brand-mark" aria-hidden="true">CM</span><div>CoreMind<span class="brand-sub">SERVICE INTELLIGENCE</span></div></a>
-  <div class="workspace-label">WORKSPACE</div>
-  <nav class="main-nav">
+<div class="app-shell">
+  <header class="workspace-header">
+    <div class="workspace-toolbar">
+      <div class="module-heading"><svg class="icon"><use href="#i-activity"/></svg><span>Problem detection &amp; RCA</span></div>
+      <div class="workspace-meta">
+        <div class="source-status" role="status"><span id="connection-dot" class="dot pending"></span><span id="connection-label">Loading snapshot</span></div>
+        <span class="snapshot-tag"><svg class="icon"><use href="#i-clock"/></svg><span id="snapshot-label">Loading snapshot...</span></span>
+        <button id="refresh" class="icon-button" aria-label="Refresh workspace from loaded snapshot" title="Refresh workspace"><svg class="icon"><use href="#i-refresh"/></svg></button>
+      </div>
+    </div>
+  <nav class="main-nav" aria-label="Problem detection sections">
     <button class="nav-item active" data-view="overview" aria-current="page"><svg class="icon"><use href="#i-grid"/></svg>Overview</button>
     <button class="nav-item" data-view="investigations"><svg class="icon"><use href="#i-search"/></svg>Investigations<span class="nav-count" id="history-count">0</span></button>
     <button class="nav-item" data-view="incidents"><svg class="icon"><use href="#i-layers"/></svg>Incident explorer</button>
+    <button class="nav-item" data-view="effectiveness"><svg class="icon"><use href="#i-activity"/></svg>RCA effectiveness</button>
     <button class="nav-item" data-view="health"><svg class="icon"><use href="#i-chart"/></svg>Data &amp; model health</button>
     <button class="nav-item" data-view="guide"><svg class="icon"><use href="#i-book"/></svg>How to read results</button>
   </nav>
-  <div class="sidebar-context"><span class="context-eyebrow">COREMIND PROGRAM</span><h3>Workstream 03</h3><p>Root cause investigation</p><div class="context-path"><span>Patterns</span><svg class="icon"><use href="#i-arrow"/></svg><strong>Evidence</strong></div></div>
-  <div class="sidebar-bottom"><div class="source-status"><span id="connection-dot" class="dot pending"></span><span id="connection-label">Loading snapshot</span></div><div class="workspace-user"><span class="avatar">CM</span><div><strong>Local workspace</strong><span>Read-only Snow data</span></div><span class="local-tag">LOCAL</span></div></div>
-</aside>
-<div class="app-shell">
-  <header class="topbar"><div class="topbar-left"><button id="menu-toggle" class="icon-button mobile-menu" aria-label="Open navigation" aria-expanded="false"><svg class="icon"><use href="#i-menu"/></svg></button><span class="breadcrumb"><span class="breadcrumb-root">Workspace</span> <svg class="icon"><use href="#i-chevron"/></svg><strong id="breadcrumb-current">Overview</strong></span></div><div class="topbar-right"><span class="snapshot-tag"><svg class="icon"><use href="#i-clock"/></svg><span id="snapshot-label">Loading snapshot...</span></span><button class="button text topbar-help" data-view="guide" aria-label="How to read RCA results"><svg class="icon"><use href="#i-book"/></svg><span>Reading guide</span></button><button id="refresh" class="icon-button" aria-label="Refresh workspace from loaded snapshot" title="Refresh workspace"><svg class="icon"><use href="#i-refresh"/></svg></button></div></header>
+  </header>
   <main id="main" tabindex="-1">
     <div id="global-error" class="alert error hidden" role="alert"></div>
     <section id="view-overview" class="view" aria-labelledby="overview-title">
@@ -90,8 +95,9 @@
     </section>
     <section id="view-incidents" class="view hidden" aria-labelledby="incidents-title"><div class="page-heading"><div><div class="eyebrow">SNOW DATA EXPLORER</div><h1 id="incidents-title">Find your next starting point.</h1><p>Search the loaded incident snapshot and build a focused investigation.</p></div><button id="investigate-selected" class="button primary" disabled><svg class="icon"><use href="#i-search"/></svg><span>Investigate selected</span></button></div><article class="panel incident-explorer"><div class="explorer-toolbar"><div class="search-field"><svg class="icon"><use href="#i-search"/></svg><input id="incident-search" placeholder="Search incident ID, title, or company" aria-label="Search incidents"></div><select id="company-filter" aria-label="Filter company"><option value="">All companies</option></select><select id="state-filter" aria-label="Filter state"><option value="">All states</option></select><select id="priority-filter" aria-label="Filter priority"><option value="">All priorities</option></select><button id="clear-filters" class="button text">Reset</button></div><div id="selection-summary" class="selection-summary hidden"></div><div id="incident-table" class="table-wrap"></div><div class="pagination"><span id="page-label">Loading incidents...</span><div><button id="previous-page" class="button secondary compact" disabled>Previous</button><button id="next-page" class="button secondary compact" disabled>Next</button></div></div></article><p class="scope-footnote">Records belong to the loaded sample. Multi-incident investigations must use a single company.</p></section>
     <section id="view-health" class="view hidden" aria-labelledby="health-title"><div class="page-heading"><div><div class="eyebrow">TRANSPARENCY &amp; QUALITY</div><h1 id="health-title">Know what the model knows.</h1><p>Inspect data coverage, validation results, and the limits behind every investigation.</p></div><button id="export-manifest" class="button secondary"><svg class="icon"><use href="#i-download"/></svg>Export metadata</button></div><div class="metric-grid" id="health-metrics"></div><div class="two-column health-grid"><article class="panel"><div class="panel-heading"><div><h2>Retrospective validation</h2><p>Chronological holdout for recorded cause categories</p></div><span class="status-badge warning">Exploratory model</span></div><div id="validation-results"></div><div id="validation-limit" class="review-notice"></div></article><article class="panel"><div class="panel-heading"><div><h2>Training label distribution</h2><p>Eligible closed problem records</p></div></div><div id="label-distribution" class="service-bars"></div></article></div><article class="panel"><div class="panel-heading"><div><h2>Source table coverage</h2><p>Retained rows, sampling, and date normalization</p></div><span class="tag">Service_Analytics</span></div><div id="coverage-table" class="table-wrap"></div></article><div class="two-column"><article class="panel"><div class="panel-heading"><h2>Known limitations</h2></div><ul id="model-limitations" class="gap-list"></ul></article><article class="panel"><div class="panel-heading"><h2>Snapshot provenance</h2></div><dl id="snapshot-provenance" class="detail-list"></dl></article></div></section>
+    <section id="view-effectiveness" class="view hidden" aria-labelledby="effectiveness-title"></section>
     <section id="view-guide" class="view hidden" aria-labelledby="guide-title"></section>
-    <footer class="app-footer"><span>CoreMind <span class="footer-separator">/</span> Workstream 03</span><span>Evidence-grounded RCA · human validation required</span></footer>
+    <footer class="app-footer"><span>Problem detection &amp; RCA</span><span>Evidence-grounded RCA · human validation required</span></footer>
   </main>
 </div>
 <dialog id="evidence-dialog" class="evidence-dialog" aria-labelledby="evidence-dialog-title"><div class="drawer-heading"><div><div class="eyebrow">SOURCE RECORD</div><h2 id="evidence-dialog-title">Evidence details</h2></div><button id="close-evidence" class="icon-button" aria-label="Close evidence details"><svg class="icon"><use href="#i-close"/></svg></button></div><div id="evidence-detail"></div></dialog>

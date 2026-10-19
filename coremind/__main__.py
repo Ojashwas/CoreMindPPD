@@ -12,6 +12,10 @@ def main():
     commands = parser.add_subparsers(dest='command', required=True)
     build_parser = commands.add_parser('build', help='Read Snow tables, fit retrieval and cause models, evaluate and save')
     build_parser.add_argument('--resume', action='store_true', help='Fit from a complete, local extraction checkpoint')
+    history_parser = commands.add_parser('backfill-history', help='Load complete Snow incident windows around closed problems')
+    history_parser.add_argument('--window-days', type=int, choices=(7, 14, 30, 90), default=90)
+    history_parser.add_argument('--plan', action='store_true', help='Preview scope without connecting to SQL')
+    history_parser.add_argument('--resume', action='store_true', help='Resume the same source and snapshot checkpoint')
     investigate = commands.add_parser('investigate', help='Investigate an incident, symptom or Workstream 2 cluster')
     investigate.add_argument('--incident', action='append', default=[])
     investigate.add_argument('--query', default='')
@@ -39,6 +43,9 @@ def main():
             fit_snapshot(settings, records, snapshot['profile'])
         else:
             build(settings)
+    elif args.command == 'backfill-history':
+        from .history import run
+        run(settings, args.window_days, resume=args.resume, preview=args.plan)
     elif args.command == 'serve':
         import uvicorn
         uvicorn.run('coremind.api:app', host='127.0.0.1', port=args.port)
